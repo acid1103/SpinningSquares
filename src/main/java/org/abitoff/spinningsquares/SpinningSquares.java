@@ -4,7 +4,7 @@ import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.function.DoubleBinaryOperator;
+import java.util.function.BiFunction;
 
 import javax.imageio.ImageIO;
 
@@ -23,9 +23,15 @@ public class SpinningSquares
 		final double squareWidth = 100;
 		final String outDir = "out";
 		final boolean clearOutDir = true;
-		DoubleBinaryOperator rotationFunction = (t, d) ->
+		BiFunction<Double,Rect,Double> rotationFunction = (t, r) ->
 		{
-			return Math.sin(Math.min(Math.max(t - d / 1000, 0) * Math.PI / 2.0, Math.PI / 2.0)) * Math.PI / 2.0;
+			double d = Math
+					.sqrt(r.getCenter().getX() * r.getCenter().getX() + r.getCenter().getY() * r.getCenter().getY());
+			double rot = Math.sin(Math.min(Math.max(t - d / 1000, 0) * Math.PI / 2.0, Math.PI / 2.0)) * Math.PI / 2.0;
+			double w = (Math.sin(rot * 2) / 2 / Math.sqrt(2) + 1) * squareWidth; // squareWidth * (d / 1000 + 1);
+			r.setWidth(w);
+			r.setHeight(w);
+			return 0.0;// rot;
 		};
 
 		String outDirAbs = new File(outDir).getAbsolutePath();
@@ -53,16 +59,17 @@ public class SpinningSquares
 		}
 		for (int i = 0; i < frames; i++)
 		{
+			System.out.println("Frame " + (i + 1) + "/" + frames + "... ");
 			BufferedImage img = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 			double[][] values = new double[width][height];
 			double t = i / fps;
+			int recti = 0;
 			for (Rect[] rectsSubArray: rects)
 			{
 				for (Rect r: rectsSubArray)
 				{
-					double d = Math.sqrt(
-							r.getCenter().getX() * r.getCenter().getX() + r.getCenter().getY() * r.getCenter().getY());
-					r.setRotation(rotationFunction.applyAsDouble(t, d));
+					System.out.print("\tRect " + (++recti) + "/" + (rects.length * rects[0].length) + "... ");
+					r.setRotation(rotationFunction.apply(t, r));
 					Rectangle bounds = r.getBounds();
 					for (int y = (int) bounds.getMinY(); y < bounds.getMaxY(); y++)
 					{
@@ -79,6 +86,7 @@ public class SpinningSquares
 							values[realX][realY] = doubleXor(values[realX][realY], overlap);
 						}
 					}
+					System.out.println("Done");
 				}
 			}
 			for (int x = 0; x < values.length; x++)
@@ -89,7 +97,9 @@ public class SpinningSquares
 				}
 			}
 			ImageIO.write(img, "png", new File(outDirAbs + "/" + i + ".png"));
+			System.out.println("Done");
 		}
+		System.out.println("Done");
 	}
 
 	private static int rgb(double d, int bg)
@@ -131,112 +141,5 @@ public class SpinningSquares
 			p2.add(p.getX(), p.getY());
 		Poly intersection = p1.intersection(p2);
 		return intersection.getArea();
-	}
-
-	@SuppressWarnings("unused")
-	private static final class Rect
-	{
-		private static final double PI_2 = Math.PI / 2.0;
-		private boolean cacheValid = false;
-		private Point2D[] pointCache;
-		private Point2D center;
-		private double width, height, rotation;
-
-		public Rect(Point2D center, double width, double height, double rotation)
-		{
-			assert width > 0 && height > 0:"";
-			this.center = center;
-			this.width = width;
-			this.height = height;
-			this.rotation = rotation;
-		}
-
-		public final Point2D getCenter()
-		{
-			return center;
-		}
-
-		public final void setCenter(Point2D center)
-		{
-			cacheValid = false;
-			this.center = center;
-		}
-
-		public final double getWidth()
-		{
-			return width;
-		}
-
-		public final void setWidth(double width)
-		{
-			cacheValid = false;
-			this.width = width;
-		}
-
-		public final double getHeight()
-		{
-			return height;
-		}
-
-		public final void setHeight(double height)
-		{
-			cacheValid = false;
-			this.height = height;
-		}
-
-		public final double getRotation()
-		{
-			return rotation;
-		}
-
-		public final void setRotation(double rotation)
-		{
-			cacheValid = false;
-			this.rotation = rotation;
-		}
-
-		public Point2D[] getPoints()
-		{
-			if (cacheValid)
-				return pointCache;
-			double d = Math.sqrt(width * width + height * height) / 2.0;
-			double a = Math.atan(height / width);
-			rotation = rotation % Math.PI;
-			if (rotation < 0)
-				rotation += Math.PI;
-			double a1 = a + rotation;
-			double a2 = a - rotation;
-			double c1 = Math.cos(a1);
-			double c2 = Math.cos(a2);
-			double s1 = Math.sin(a1);
-			double s2 = Math.sin(a2);
-			Point2D p1 = new Point2D(center.getX() - d * c1, center.getY() - d * s1);
-			Point2D p2 = new Point2D(center.getX() + d * c2, center.getY() - d * s2);
-			Point2D p3 = new Point2D(center.getX() + d * c1, center.getY() + d * s1);
-			Point2D p4 = new Point2D(center.getX() - d * c2, center.getY() + d * s2);
-			Point2D[] points;
-			if (rotation < PI_2)
-				points = new Point2D[] {p1, p2, p3, p4};
-			else
-				points = new Point2D[] {p4, p1, p2, p3};
-			pointCache = points;
-			cacheValid = true;
-			return points;
-		}
-
-		public Rectangle getBounds()
-		{
-			Point2D[] points = getPoints();
-			int minX = roundAwayFromZero(points[3].getX());
-			int minY = roundAwayFromZero(points[0].getY());
-			int maxX = roundAwayFromZero(points[1].getX());
-			int maxY = roundAwayFromZero(points[2].getY());
-			return new Rectangle(minX, minY, maxX - minX, maxY - minY);
-		}
-
-		private static int roundAwayFromZero(double n)
-		{
-			return (int) (n < 0 ? Math.floor(n) : Math.ceil(n));
-		}
 	}
 }
